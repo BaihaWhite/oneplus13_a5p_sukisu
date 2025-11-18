@@ -6,7 +6,7 @@ permissions:
 on:
   workflow_dispatch:
   workflow_run:
-    workflows: ["oneplus_13T"]
+    workflows: ["OnePlus_Pad_Pro"]
     types: [completed]
 
 jobs:
