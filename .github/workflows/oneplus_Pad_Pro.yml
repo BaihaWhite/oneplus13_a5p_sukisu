@@ -52,7 +52,8 @@ jobs:
           sudo apt install -y python3 git curl
           sudo apt install -y python3 git curl ccache
           sudo apt install -y zip
-          sudo apt install lld
+          sudo apt install -y lld llvm
+
 
       - name: Compare Version
         if: ${{!inputs.enable_feature_y}}
