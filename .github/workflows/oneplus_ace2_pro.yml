@@ -114,7 +114,7 @@ jobs:
       - name: Set up susfs
         run: |
            cd kernel_workspace
-           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android14-6.1
+           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15
            git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git
 
            cd kernel_platform        
@@ -323,7 +323,7 @@ jobs:
       - name: Upload AnyKernel3
         uses: actions/upload-artifact@v4
         with:
-         name: SukiSU_${{ env.KSUVER }}_OnePlus_Pad_Pro
+         name: SukiSU_${{ env.KSUVER }}_OnePlus_ACE2_Pro
          path: ./AnyKernel3/*
 
       - name: Create AnyKernel3 ZIP
