@@ -5,7 +5,7 @@ on:
       enable_feature_x:
         description: "是否启用KPM"
         required: false
-        default: true
+        default: false
         type: boolean
       enable_feature_y:
         description: "跳过版本比较"
@@ -284,7 +284,7 @@ jobs:
       - name: Add make name
         run: |
          cd kernel_workspace/kernel_platform
-         sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
+         ＃sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
          sed -i '$s|echo "\$res"|echo "\$res-build-by-baihawhite-gki-for-onepluspadpro"|' ./common/scripts/setlocalversion
 
       - name: Add sched_ext
