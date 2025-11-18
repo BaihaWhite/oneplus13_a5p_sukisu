@@ -87,7 +87,7 @@ jobs:
          repo --trace sync -c -j$(nproc --all) --no-tags
          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
-            
+         
       - name: Set up SukiSU
         run: |
          echo DATE=$(date +%F) >> $GITHUB_ENV
@@ -111,34 +111,35 @@ jobs:
              { print }
          ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
 
-        - name: Set up susfs
+      - name: Set up susfs
         run: |
-           cd kernel_workspace
-           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15
-           git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git
+         cd kernel_workspace
+         git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15
+         git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git
 
-           cd kernel_platform        
-           # *** 核心修改：确保复制了 susfs 目录以及其他头文件 (如果存在) ***
-           # 1. 复制 fs 目录下的文件
-           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-           # 2. 复制 include/linux 目录下的文件（如果有）
-           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/ || true
-           # 3. 复制 susfs 目录到 include/linux/ 下 (这是解决编译错误的关键)
-           cp -r ../susfs4ksu/kernel_patches/include/linux/susfs ./common/include/linux/           #lz4k
+         cd kernel_platform        
+         # *** 核心修改：确保复制了 susfs 目录以及其他头文件 (如果存在) ***
+         # 1. 复制 fs 目录下的文件
+         cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
+         # 2. 复制 include/linux 目录下的文件（如果有）
+         cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/ || true
+         # 3. 复制 susfs 目录到 include/linux/ 下 (这是解决编译错误的关键)
+         cp -r ../susfs4ksu/kernel_patches/include/linux/susfs ./common/include/linux/          
+         #lz4k
            
-           cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
-           cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
-           cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
-           cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/
-           # Apply patches
-           cd ./common
+         cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
+         cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
+         cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
+         cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/
+         # Apply patches
+         cd ./common
 
-           patch -p1 < 50_add_susfs_in_gki-android13-5.15.patch || true
-           # cp ../../SukiSU_patch/hooks/scope_min_manual_hooks_v1.6.patch ./
-           # patch -p1 -F 3 < scope_min_manual_hooks_v1.6.patch
-           curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/legacy/fix_5.15.legacy -o fix_5.15.legacy.patch
-           patch -p1 < fix_5.15.legacy.patch || true
-           echo "完成"
+         patch -p1 < 50_add_susfs_in_gki-android13-5.15.patch || true
+         # cp ../../SukiSU_patch/hooks/scope_min_manual_hooks_v1.6.patch ./
+         # patch -p1 -F 3 < scope_min_manual_hooks_v1.6.patch
+         curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/legacy/fix_5.15.legacy -o fix_5.15.legacy.patch
+         patch -p1 < fix_5.15.legacy.patch || true
+         echo "完成"
       
       - name: Apply HMBird GKI patch
         run: |
