@@ -111,17 +111,21 @@ jobs:
              { print }
          ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
 
-      - name: Set up susfs
+        - name: Set up susfs
         run: |
            cd kernel_workspace
            git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15
            git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git
 
            cd kernel_platform        
-           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch ./common/
+           # *** 核心修改：确保复制了 susfs 目录以及其他头文件 (如果存在) ***
+           # 1. 复制 fs 目录下的文件
            cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-           #lz4k
+           # 2. 复制 include/linux 目录下的文件（如果有）
+           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/ || true
+           # 3. 复制 susfs 目录到 include/linux/ 下 (这是解决编译错误的关键)
+           cp -r ../susfs4ksu/kernel_patches/include/linux/susfs ./common/include/linux/           #lz4k
+           
            cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
            cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
            cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
