@@ -132,6 +132,8 @@ jobs:
            patch -p1 < 50_add_susfs_in_gki-android13-5.15.patch || true
            # cp ../../SukiSU_patch/hooks/scope_min_manual_hooks_v1.6.patch ./
            # patch -p1 -F 3 < scope_min_manual_hooks_v1.6.patch
+           curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/legacy/fix_5.15.legacy -o fix_5.15.legacy.patch
+           patch -p1 < fix_5.15.legacy.patch
            echo "完成"
       
       - name: Apply HMBird GKI patch
