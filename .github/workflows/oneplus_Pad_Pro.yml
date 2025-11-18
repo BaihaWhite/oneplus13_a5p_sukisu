@@ -98,7 +98,7 @@ jobs:
          echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
          export KSU_VERSION=$KSU_VERSION
          sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile 
-         awk -v old='v$1-$(shell cd $(KSU_SRC); $(GIT_BIN) rev-parse --short=8 HEAD)@$(shell cd $(KSU_SRC); $(GIT_BIN) rev-parse --abbrev-ref HEAD)' -v new='v$1-$(KSU_VERSION)-酷安@WHITEEEEEEEE' '
+         awk -v old='v$1-$(shell cd $(KSU_SRC); $(GIT_BIN) rev-parse --short=8 HEAD)@$(shell cd $(KSU_SRC); $(GIT_BIN) rev-parse --abbrev-ref HEAD)' -v new='v$1-$(KSU_VERSION)-酷安@BaihaWhite' '
              index($0, old) {
                  $0 = substr($0, 1, index($0, old)-1) new substr($0, index($0, old) + length(old))
              }
@@ -285,7 +285,7 @@ jobs:
         run: |
          cd kernel_workspace/kernel_platform
          sed -i 's/${scm_version}//' ./common/scripts/setlocalversion
-         sudo sed -i 's/-4k/-android14-6.1-baihawhite_edition-gki/g' ./common/arch/arm64/configs/gki_defconfig
+         sed -i '$s|echo "\$res"|echo "\$res-build-by-baihawhite-gki-for-onepluspadpro"|' ./common/scripts/setlocalversion
 
       - name: Add sched_ext
         run: |
