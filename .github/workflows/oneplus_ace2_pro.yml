@@ -118,7 +118,7 @@ jobs:
               { print }
           ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
 
-            - name: 设置 SUSFS
+      - name: 设置 SUSFS
         run: |
           cd kernel_workspace
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15
