@@ -44,11 +44,13 @@ jobs:
           remove-cached-tools: 'false'
           verbose: 'true'
 
-      - name: 安装构建依赖
+      - name: 安装完整的构建工具链
         run: |
-          sudo apt update && sudo apt upgrade -y
-          sudo apt install -y ccache python3 git curl zip lld llvm libelf-dev build-essential bc flex bison libssl-dev
-
+          sudo apt update
+          sudo apt install -y clang-14 llvm-14 lld gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu
+          sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-14 100
+          sudo update-alternatives --install /usr/bin/ld.lld ld.lld /usr/bin/ld.lld-14 100
+      
       - name: 配置 ccache
         run: |
           mkdir -p ~/.ccache
@@ -314,27 +316,21 @@ jobs:
           cp -r ./sched_ext/* ./common/kernel/sched/
           rm -rf ./sched_ext/.git
 
-      - name: 构建内核 (使用重试机制)
-        uses: nick-fields/retry@v3
-        with:
-          timeout_minutes: 45
-          max_attempts: 3
-          retry_on: timeout
-          command: |
-            set -e
-            set -x
-            
-            export KBUILD_BUILD_TIMESTAMP="$BUILD_TIME"
-            export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r510928/bin:$PATH"
-            export PATH="/usr/lib/ccache:$PATH"
-            
-            cd kernel_workspace/kernel_platform/common
-            
-            # 使用 ccache 进行构建
-            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3 gki_defconfig all
-            
-            ccache --show-stats
-
+      - name: 构建内核
+        run: |
+          set -e
+          set -x
+          
+          export KBUILD_BUILD_TIMESTAMP="$BUILD_TIME"
+          export PATH="/usr/lib/ccache:$PATH"
+          
+          cd kernel_workspace/kernel_platform/common
+          
+          # 使用系统安装的 clang
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3 gki_defconfig all
+          
+          ccache --show-stats
+          
       - name: 应用 Linux 补丁 (KPM)
         if: ${{inputs.enable_feature_x}}
         run: |
