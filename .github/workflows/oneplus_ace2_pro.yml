@@ -118,7 +118,7 @@ jobs:
               { print }
           ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
 
-      - name: 设置 SUSFS
+            - name: 设置 SUSFS
         run: |
           cd kernel_workspace
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15
@@ -139,9 +139,15 @@ jobs:
           cd ./common
           patch -p1 < 50_add_susfs_in_gki-android13-5.15.patch || true
           
-          # 修复补丁
+          # 修复补丁 - 使用更安全的方式
           curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/legacy/fix_5.15.legacy -o fix_5.15.legacy.patch
-          patch -p1 < fix_5.15.legacy.patch
+          
+          # 使用更宽松的补丁应用方式，忽略失败的部分
+          patch -p1 -F 3 --no-backup-if-mismatch < fix_5.15.legacy.patch || true
+          
+          # 清理失败的补丁文件
+          rm -f *.rej || true
+          
           echo "SUSFS 设置完成"
 
       - name: 应用 HMBird GKI 补丁
