@@ -44,10 +44,17 @@ jobs:
           remove-cached-tools: 'false'
           verbose: 'true'
 
+      - name: 安装构建依赖
+        run: |
+          sudo apt update && sudo apt upgrade -y
+          sudo apt install -y ccache python3 git curl zip lld llvm libelf-dev build-essential bc flex bison libssl-dev
+
       - name: 安装构建工具链
         run: |
-          sudo apt update
-          sudo apt install -y clang lld gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu      
+          sudo apt install -y clang lld gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu bc build-essential flex bison libssl-dev libelf-dev
+          # 确保 ld.lld 链接正确
+          sudo ln -sf /usr/bin/lld /usr/bin/ld.lld || true
+
       - name: 配置 ccache
         run: |
           mkdir -p ~/.ccache
@@ -138,15 +145,7 @@ jobs:
           cd ./common
           patch -p1 < 50_add_susfs_in_gki-android13-5.15.patch || true
           
-          # 修复补丁 - 使用更安全的方式
-          curl -LSs https://github.com/zzh20188/GKI_KernelSU_SUSFS/raw/refs/heads/legacy/fix_5.15.legacy -o fix_5.15.legacy.patch
-          
-          # 使用更宽松的补丁应用方式，忽略失败的部分
-          patch -p1 -F 3 --no-backup-if-mismatch < fix_5.15.legacy.patch || true
-          
-          # 清理失败的补丁文件
-          rm -f *.rej || true
-          
+          echo "跳过有问题的 5.15 修复补丁，继续构建..."
           echo "SUSFS 设置完成"
 
       - name: 应用 HMBird GKI 补丁
@@ -313,20 +312,48 @@ jobs:
           cp -r ./sched_ext/* ./common/kernel/sched/
           rm -rf ./sched_ext/.git
 
-      - name: 构建内核
+      - name: 检查工具链
         run: |
-          set -e
-          set -x
-          
-          export KBUILD_BUILD_TIMESTAMP="$BUILD_TIME"
-          export PATH="/usr/lib/ccache:$PATH"
-          
+          echo "=== 工具链版本信息 ==="
+          clang --version || echo "clang 未安装"
+          ld.lld --version || echo "ld.lld 未找到"
+          aarch64-linux-gnu-gcc --version || echo "交叉编译器未安装"
+          echo "=== 构建环境检查完成 ==="
+
+      - name: 检查构建环境
+        run: |
           cd kernel_workspace/kernel_platform/common
-          
-          # 使用系统默认的 clang
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS_PERF+=-O3 gki_defconfig all
-          
-          ccache --show-stats
+          echo "检查内核源码结构..."
+          ls -la | head -10
+          echo "检查配置文件..."
+          ls -la arch/arm64/configs/ | grep gki
+
+      - name: 构建内核 (使用重试机制)
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 60
+          max_attempts: 3
+          retry_on: timeout
+          command: |
+            set -e
+            set -x
+            
+            export KBUILD_BUILD_TIMESTAMP="$BUILD_TIME"
+            export PATH="/usr/lib/ccache:$PATH"
+            
+            cd kernel_workspace/kernel_platform/common
+            
+            # 先检查必要的工具
+            which clang
+            which ld.lld
+            which aarch64-linux-gnu-gcc
+            
+            echo "开始构建内核..."
+            # 使用系统默认的 clang
+            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld O=out gki_defconfig
+            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld O=out
+            
+            ccache --show-stats
           
       - name: 应用 Linux 补丁 (KPM)
         if: ${{inputs.enable_feature_x}}
