@@ -1,5 +1,4 @@
-name: OnePlus_Ace2_Pro # 请注意，仓库名称是 oneplus13_a5p_sukisu，但这里描述的是 Ace2 Pro，可能需要统一或说明
-
+name: OnePlus_Ace2_Pro 
 on:
   workflow_dispatch:
     inputs:
@@ -398,7 +397,7 @@ jobs:
           do.systemless=1
           do.cleanup=1
           do.cleanuponabort=0
-          device.name1=pineapple # 确认 Ace2 Pro 的代号是否为 pineapple
+          device.name1=xigua # 确认 Ace2 Pro 的代号是否为 pineapple
           supported.versions=
           supported.patchlevels=
           '; } # end properties
