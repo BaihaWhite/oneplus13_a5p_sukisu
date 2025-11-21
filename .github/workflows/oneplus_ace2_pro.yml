@@ -1,25 +1,26 @@
-name: OnePlus_Ace2_Pro
+name: OnePlus_Ace2_Pro 
+
 on:
   workflow_dispatch:
     inputs:
       enable_feature_x:
-        description: "是否启用KPM"
+        description: "是否启用KPM (Kernel Patch Module)"
         required: false
         default: false
         type: boolean
       enable_feature_y:
-        description: "跳过版本比较"
+        description: "跳过版本比较 (直接构建，不检查是否已有更新版本)"
         required: false
         default: true
         type: boolean
       enable_feature_z:
-        description: "不发布release"
+        description: "不发布release (构建后仅作为artifact保存)"
         required: false
         default: true
         type: boolean
-  
+
   schedule:
-    - cron: '0 22 * * *'
+    - cron: '0 22 * * *' # 每天 UTC 时间 22:00 (北京时间次日 06:00) 运行
 
 jobs:
   build:
@@ -28,7 +29,7 @@ jobs:
       CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
       CCACHE_NOHASHDIR: "true"
       CCACHE_HARDLINK: "true"
-      CCACHE_DIR: /home/runner/.ccache  
+      CCACHE_DIR: /home/runner/.ccache
       CCACHE_MAXSIZE: 8G
     steps:
       - name: Maximize build space
@@ -41,7 +42,7 @@ jobs:
           remove-docker-images: 'true'
           remove-large-packages: 'true'
           remove-swapfile: 'true'
-          remove-cached-tools: 'false'
+          remove-cached-tools: 'false' # 保留缓存工具
           verbose: 'true'
 
       - name: 安装构建依赖
@@ -52,7 +53,7 @@ jobs:
       - name: 安装构建工具链
         run: |
           sudo apt install -y clang lld gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu bc build-essential flex bison libssl-dev libelf-dev
-          # 确保 ld.lld 链接正确
+          # 确保 ld.lld 链接正确 (如果系统路径不同，可能需要调整)
           sudo ln -sf /usr/bin/lld /usr/bin/ld.lld || true
 
       - name: 配置 ccache
@@ -66,19 +67,24 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.ccache
-          key: oneplus-ace2-pro-ccache-${{ github.sha }}
+          key: oneplus-ace2-pro-ccache-${{ github.sha }} # 使用 SHA 作为精确键
           restore-keys: |
-            oneplus-ace2-pro-ccache-
+            oneplus-ace2-pro-ccache- # 使用前缀恢复较旧的缓存
 
-      - name: Compare Version
-        if: ${{!inputs.enable_feature_y}}
+      - name: Compare Version # 比较版本以避免重复构建
+        if: ${{ !inputs.enable_feature_y }} # 仅在未选择跳过版本比较时运行
         run: |
           git clone https://github.com/SukiSU-Ultra/SukiSU-Ultra.git SUKI/
           cd SUKI
           KSU_GIT_VERSION=$(git rev-list --count HEAD)
-          KSU_VERSION=$((10000 + KSU_GIT_VERSION + 700))
-          LATEST_TAG=$(git ls-remote --tags https://github.com/44C38B8/oneplus13_a5p_sukisu.git | tail -n1 | sed 's/.*\///')
-          if [ $LATEST_TAG -eq $KSU_VERSION ];then exit 1;fi
+          KSU_VERSION=$((10000 + KSU_GIT_VERSION + 700)) # 计算 KSU 版本号
+          echo "Calculated KSU Version: $KSU_VERSION" # 输出计算的版本号
+          LATEST_TAG=$(git ls-remote --tags https://github.com/44C38B8/oneplus13_a5p_sukisu.git | tail -n1 | sed 's/.*\///' | sed 's/\^{}//') # 修复标签获取命令
+          echo "Latest Tag on Target Repo: $LATEST_TAG" # 输出目标仓库最新标签
+          if [ -n "$LATEST_TAG" ] && [ "$LATEST_TAG" -eq "$KSU_VERSION" ]; then
+              echo "Version matches latest release, stopping build."
+              exit 1 # 如果版本匹配，则退出构建
+          fi
           cd ..
 
       - name: 安装 repo 工具
@@ -95,58 +101,59 @@ jobs:
       - name: 初始化 repo 并同步代码
         run: |
           mkdir kernel_workspace && cd kernel_workspace
-          repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b refs/heads/oneplus/sm8550 -m oneplus_ace2_pro_v.xml --depth=1
+          repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b refs/heads/oneplus/sm8550 -m oneplus_ace2_pro_v.xml --depth=1 # 使用 Ace2 Pro 的 manifest
           repo --trace sync -c -j$(nproc --all) --no-tags
-          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
-          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
+          # 删除可能干扰的 ABI 保护导出文件
+          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports in common!"
+          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports in msm-kernel!"
 
       - name: Set up SukiSU
         run: |
-         echo DATE=$(date +%F) >> $GITHUB_ENV
+         echo DATE=$(date +%F) >> $GITHUB_ENV # 设置构建日期
          cd kernel_workspace/kernel_platform
-         curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main
+         # 从指定分支获取 setup.sh，以提高稳定性
+         curl -LSs "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" | bash -s susfs-main # 使用 susfs-main 分支
          cd ./KernelSU
-         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 37185)
-         echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV
+         # 计算 KSU 版本号
+         KSU_VERSION=$(expr $(/usr/bin/git rev-list --count main) "+" 37185) # 假设 main 分支，使用指定的计算方式
+         echo "KSUVER=$KSU_VERSION" >> $GITHUB_ENV # 导出 KSU 版本号
          export KSU_VERSION=$KSU_VERSION
-         sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile 
-         awk -v old='v$1-$(shell cd $(KSU_SRC); $(GIT_BIN) rev-parse --short=8 HEAD)@$(shell cd $(KSU_SRC); $(GIT_BIN) rev-parse --abbrev-ref HEAD)' -v new='v$1-$(KSU_VERSION)-酷安@BaihaWhite' '
+         # 修改内核 Makefile 中的版本号定义
+         sed -i "s/DKSU_VERSION=12800/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
+         # 修改内核 Makefile 中的版本字符串
+         awk -v old='v$1-$(shell cd $(KSU_SRC); $(GIT_BIN) rev-parse --short=8 HEAD)@$(shell cd $(KSU_SRC); $(GIT_BIN) rev-parse --abbrev-ref HEAD)' -v new='v$1-$(KSU_VERSION)-酷安@Baihawhite' '
              index($0, old) {
                  $0 = substr($0, 1, index($0, old)-1) new substr($0, index($0, old) + length(old))
              }
              { print }
          ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
-         # awk -v old='KSU_VERSION := $(shell expr 40000 + $(KSU_GITHUB_VERSION_COMMIT) - 2815)' -v new='KSU_VERSION := $(shell expr 10000 + $(KSU_GITHUB_VERSION_COMMIT) + 700)' '
-             # index($0, old) {
-                 # $0 = substr($0, 1, index($0, old)-1) new substr($0, index($0, old) + length(old))
-             # }
-             # { print }
-         # ' kernel/Makefile > kernel/Makefile.tmp && mv kernel/Makefile.tmp kernel/Makefile
 
-
-      - name: 设置 SUSFS
+      - name: 设置 SUSFS 和 LZ4K
         run: |
           cd kernel_workspace
-          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15
-          git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git
+          git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android13-5.15 --depth=1 # 使用指定分支和深度克隆
+          git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git --depth=1
 
-          cd kernel_platform        
+          cd kernel_platform
+          # 复制 SUSFS 补丁和文件
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android13-5.15.patch ./common/
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-          
-          # lz4k
+
+          # 复制 LZ4K 相关文件
           cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
           cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
           cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
           cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/
 
-          # Apply patches
+          # 应用 SUSFS 补丁
           cd ./common
-          patch -p1 < 50_add_susfs_in_gki-android13-5.15.patch || true
-          
-          echo "跳过有问题的 5.15 修复补丁，继续构建..."
-          echo "SUSFS 设置完成"
+          # 使用 -f 强制应用，但检查退出码
+          if ! patch -f -p1 < 50_add_susfs_in_gki-android13-5.15.patch; then
+              echo "Error: SUSFS patch failed to apply!"
+              exit 1 # 如果补丁失败，立即退出
+          fi
+          echo "SUSFS patch applied successfully."
 
       - name: 应用 HMBird GKI 补丁
         run: |
@@ -222,30 +229,33 @@ jobs:
           MODULE_AUTHOR("reigadegr");
           MODULE_DESCRIPTION("Forcefully convert HMBIRD_OGKI to HMBIRD_GKI.");
           EOF
-          
+
           if ! grep -q "hmbird_patch.o" Makefile; then
           echo "obj-y += hmbird_patch.o" >> Makefile
           fi
-          
+
           cd ../../../
           git add -A
-          git commit -m "Add HMBird GKI patch" || true
+          git commit -m "Add HMBird GKI patch" || echo "No changes to commit for HMBird patch."
 
       - name: 应用 lz4kd 补丁
         run: |
           cd kernel_workspace/kernel_platform/common
           cp ../../SukiSU_patch/other/zram/zram_patch/5.15/lz4kd.patch ./
-          patch -p1 -F 3 < lz4kd.patch || true
+          if ! patch -f -p1 -F 3 < lz4kd.patch; then
+              echo "Error: LZ4KD patch failed to apply!"
+              exit 1
+          fi
+          echo "LZ4KD patch applied successfully."
 
       - name: 添加 SUSFS 配置
         run: |
           cd kernel_workspace/kernel_platform
+          # 添加 KSU 和 SUSFS 配置
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
 
-          # Add VFS configuration settings
+          # SUSFS configuration settings
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
-          
-          # Add SUSFS configuration settings
           echo "CONFIG_KSU_SUSFS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_PATH=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -262,15 +272,15 @@ jobs:
           echo "CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_OPEN_REDIRECT=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS_SUS_MAP=n" >> ./common/arch/arm64/configs/gki_defconfig
-          
-          # 压缩算法配置
+
+          # Compression algorithm configs
           echo "CONFIG_CRYPTO_LZ4HC=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_LOCALVERSION_AUTO=n" >> ./common/arch/arm64/configs/gki_defconfig
 
-          # BBR 拥塞控制
+          # BBR TCP Congestion Control
           echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_NET_SCH_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
@@ -279,20 +289,20 @@ jobs:
           echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_DEFAULT_TCP_CONG=bbr" >> ./common/arch/arm64/configs/gki_defconfig
-          
-          # 移除 defconfig 检查
-          sed -i 's/check_defconfig//' ./common/build.config.gki || true
-          
+
+          # Remove defconfig check
+          sed -i 's/check_defconfig//' ./common/build.config.gki || echo "build.config.gki check_defconfig line not found or already removed."
+
           cd common
-          git add -A && git commit -a -m "BUILD Kernel" || true
+          git add -A && git commit -a -m "BUILD Kernel with SUSFS and LZ4K configs" || echo "No changes to commit for configs."
 
       - name: 添加 KPM 配置
-        if: ${{inputs.enable_feature_x}}
+        if: ${{ inputs.enable_feature_x }}
         run: |
           cd kernel_workspace/kernel_platform
           echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
           cd common
-          git add -A && git commit -a -m "Add KPM config" || true
+          git add -A && git commit -a -m "Add KPM config" || echo "No changes to commit for KPM config."
 
       - name: 设置内核版本名称
         run: |
@@ -308,16 +318,16 @@ jobs:
       - name: 添加 sched_ext
         run: |
           cd kernel_workspace/kernel_platform/
-          git clone https://github.com/HanKuCha/sched_ext.git
+          git clone https://github.com/HanKuCha/sched_ext.git --depth=1
           cp -r ./sched_ext/* ./common/kernel/sched/
-          rm -rf ./sched_ext/.git
+          rm -rf ./sched_ext # 删除整个 sched_ext 目录，包括 .git
 
       - name: 检查工具链
         run: |
           echo "=== 工具链版本信息 ==="
-          clang --version || echo "clang 未安装"
-          ld.lld --version || echo "ld.lld 未找到"
-          aarch64-linux-gnu-gcc --version || echo "交叉编译器未安装"
+          clang --version || echo "clang 未安装或不在 PATH 中"
+          ld.lld --version || echo "ld.lld 未找到或不在 PATH 中"
+          aarch64-linux-gnu-gcc --version || echo "aarch64-linux-gnu-gcc 未安装或不在 PATH 中"
           echo "=== 构建环境检查完成 ==="
 
       - name: 检查构建环境
@@ -328,35 +338,40 @@ jobs:
           echo "检查配置文件..."
           ls -la arch/arm64/configs/ | grep gki
 
-      - name: 构建内核 (使用重试机制)
+      - name: 构建内核 (使用重试机制，但移除可能隐藏错误的命令封装)
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 60
           max_attempts: 3
           retry_on: timeout
           command: |
-            set -e
-            set -x
-            
+            set -e # 遇到错误立即退出
+            set -x # 打印执行的命令
+
             export KBUILD_BUILD_TIMESTAMP="$BUILD_TIME"
             export PATH="/usr/lib/ccache:$PATH"
-            
+
             cd kernel_workspace/kernel_platform/common
-            
+
             # 先检查必要的工具
-            which clang
-            which ld.lld
-            which aarch64-linux-gnu-gcc
-            
+            which clang || { echo "clang not found"; exit 1; }
+            which ld.lld || { echo "ld.lld not found"; exit 1; }
+            which aarch64-linux-gnu-gcc || { echo "aarch64-linux-gnu-gcc not found"; exit 1; }
+
             echo "开始构建内核..."
-            # 使用系统默认的 clang
+            echo "生成配置..."
             make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld O=out gki_defconfig
-            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld O=out
-            
+
+            echo "开始编译..."
+            # 关键修改：移除 -k 标志，让错误立即显现
+            # 保留 -j$(nproc --all) 以加快速度，但注意这可能使错误信息更难读
+            # 如果问题依旧，可以尝试减少 -j 数量或移除它
+            make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld O=out V=1 # V=1 提供更详细的编译信息
+
             ccache --show-stats
-          
-      - name: 应用 Linux 补丁 (KPM)
-        if: ${{inputs.enable_feature_x}}
+
+      - name: 应用 Linux 补丁 (KPM) # 如果启用了 KPM
+        if: ${{ inputs.enable_feature_x }}
         run: |
           cd kernel_workspace/kernel_platform/common/out/arch/arm64/boot
           curl -LO https://github.com/SukiSU-Ultra/SukiSU_KernelPatch_patch/releases/download/0.12.0/patch_linux
@@ -367,12 +382,13 @@ jobs:
 
       - name: 准备 AnyKernel3
         run: |
-          git clone https://github.com/Kernel-SU/AnyKernel3.git --depth=1      
+          git clone https://github.com/Kernel-SU/AnyKernel3.git --depth=1
           rm -rf ./AnyKernel3/.git
           rm -rf ./AnyKernel3/push.sh
           cp kernel_workspace/kernel_platform/common/out/arch/arm64/boot/Image ./AnyKernel3/
-          
-          # 更新 AnyKernel3 的脚本以支持一加设备
+
+          # 更新 AnyKernel3 的脚本以支持 OnePlus Ace2 Pro (pineapple)
+          # 注意：原始脚本中的设备名称是 pineapple，如果 Ace2 Pro 的代号不同，请修改 device.name1
           cat << 'EOF' > ./AnyKernel3/anykernel.sh
           #!/sbin/sh
           # AnyKernel3 Ramdisk Mod Script
@@ -387,7 +403,7 @@ jobs:
           do.systemless=1
           do.cleanup=1
           do.cleanuponabort=0
-          device.name1=pineapple
+          device.name1=pineapple # 确认 Ace2 Pro 的代号是否为 pineapple
           supported.versions=
           supported.patchlevels=
           '; } # end properties
@@ -421,21 +437,21 @@ jobs:
             ./OnePlusAce2Pro_SukiSU_${{ env.KSUVER }}.zip
             ./AnyKernel3/
 
-      - name: 创建 Release
-        if: ${{!inputs.enable_feature_z}}
+      - name: 创建 Release # 如果未选择不发布 release
+        if: ${{ !inputs.enable_feature_z }}
         uses: softprops/action-gh-release@v1
         with:
           name: Release ${{ env.DATE }}
           body: |
-            一加 Ace2 Pro SukiSU Kernel ${{ env.KSUVER }}
-            
+            OnePlus Ace2 Pro SukiSU Kernel ${{ env.KSUVER }}
+
             Features:
             - SukiSU Root Solution
             - SUSFS Support
             - BBR TCP Congestion Control
             - LZ4K Compression
             - Built with CCache for faster builds
-            
+
             Device: OnePlus Ace2 Pro (pineapple)
           tag_name: ${{ env.KSUVER }}
           files: ./OnePlusAce2Pro_SukiSU_${{ env.KSUVER }}.zip
