@@ -338,8 +338,8 @@ jobs:
           echo "检查配置文件..."
           ls -la arch/arm64/configs/ | grep gki
 
-      - name: 构建内核 (增加详细输出，便于调试)
-        # 移除 retry，直接运行 make，失败时能立即看到详细错误
+      - name: 构建内核 (禁用并行，强制输出详细错误信息)
+        # 禁用并行编译 (-j)，增加详细输出 (VERBOSE=1, --debug=f)，以便准确捕获错误
         run: |
           set -e # 遇到错误立即退出
           set -x # 打印执行的命令
@@ -356,13 +356,12 @@ jobs:
 
           echo "开始构建内核..."
           echo "生成配置..."
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld O=out gki_defconfig
+          make LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld O=out gki_defconfig # 移除 -j
 
-          echo "开始编译 (VERBOSE=1, --debug=f)..."
-          # 关键修改：增加 VERBOSE=1 和 --debug=f 以获取更详细的构建信息
-          # 移除 -k 标志，保留 -j 并行编译
-          # V=1 通常被 VERBOSE=1 覆盖或提供类似信息，这里优先使用 VERBOSE=1
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld O=out VERBOSE=1 --debug=f
+          echo "开始编译 (禁用并行，VERBOSE=1, --debug=f)..."
+          # 关键修改：移除 -j 并行编译，保留 VERBOSE=1 和 --debug=f
+          # 这会显著减慢构建速度，但能让错误信息更清晰地显示出来
+          make LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD=ld.lld O=out VERBOSE=1 --debug=f
 
           ccache --show-stats
 
@@ -383,7 +382,8 @@ jobs:
           rm -rf ./AnyKernel3/push.sh
           cp kernel_workspace/kernel_platform/common/out/arch/arm64/boot/Image ./AnyKernel3/
 
-          # 更新 AnyKernel3 的脚本以支持 OnePlus Ace2 Pro
+          # 更新 AnyKernel3 的脚本以支持 OnePlus Ace2 Pro (pineapple)
+          # 注意：原始脚本中的设备名称是 pineapple，如果 Ace2 Pro 的代号不同，请修改 device.name1
           cat << 'EOF' > ./AnyKernel3/anykernel.sh
           #!/sbin/sh
           # AnyKernel3 Ramdisk Mod Script
@@ -398,7 +398,7 @@ jobs:
           do.systemless=1
           do.cleanup=1
           do.cleanuponabort=0
-          device.name1=xigua # 确认 Ace2 Pro 的代号
+          device.name1=pineapple # 确认 Ace2 Pro 的代号是否为 pineapple
           supported.versions=
           supported.patchlevels=
           '; } # end properties
@@ -447,7 +447,7 @@ jobs:
             - LZ4K Compression
             - Built with CCache for faster builds
 
-            Device: OnePlus Ace2 Pro 
+            Device: OnePlus Ace2 Pro (pineapple)
           tag_name: ${{ env.KSUVER }}
           files: ./OnePlusAce2Pro_SukiSU_${{ env.KSUVER }}.zip
         env:
