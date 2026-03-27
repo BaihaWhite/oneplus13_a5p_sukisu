@@ -378,14 +378,14 @@ jobs:
         if: steps.check.outputs.should_cancel != 'yes'
         run: |
           export KBUILD_BUILD_TIMESTAMP="Tue Jun 3 03:22:33 UTC 2025"
-          export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
+          export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin:$PATH"
           export PATH="/usr/lib/ccache:$PATH"
           sudo apt install libelf-dev
           cd kernel_workspace/kernel_platform/common
           echo "=== Checking LLVM tools ==="
           which llvm-ar || echo "llvm-ar not found in PATH"
           ls -la $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/ || echo "clang host directory not found"
-          ls -la $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin/llvm* || echo "LLVM tools not found in expected location"
+          ls -la $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r450784e/bin/llvm* || echo "LLVM tools not found in expected location"
           echo "=== Listing actual clang versions ==="
           ls -la $GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/ || echo "No clang versions found"
           echo "=== Starting build ==="
