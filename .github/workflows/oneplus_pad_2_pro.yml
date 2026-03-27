@@ -347,7 +347,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
          name: Release ${{ env.DATE }}
-         body: 一加13T、一加平板2Pro SukiSU_${{ env.KSUVER }}
+         body: 一加13T、一加平板2Pro、一加Ace6 SukiSU_${{ env.KSUVER }}
          tag_name: ${{ env.KSUVER }}
          prerelease: true
          files: ./AnyKernel3/*.zip

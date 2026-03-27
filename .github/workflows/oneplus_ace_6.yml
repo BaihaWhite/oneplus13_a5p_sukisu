@@ -1,4 +1,4 @@
-name: OnePlus_13T
+name: OnePlus_Ace6
 on:
   workflow_dispatch:
     inputs:
@@ -14,11 +14,6 @@ on:
         type: boolean
       enable_feature_z:
         description: "不发布release"
-        required: false
-        default: true
-        type: boolean
-      enable_feature_n:
-        description: "不获取管理器"
         required: false
         default: true
         type: boolean
@@ -93,7 +88,7 @@ jobs:
         if: steps.check.outputs.should_cancel != 'yes'
         run: |
          mkdir kernel_workspace && cd kernel_workspace
-         repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m oneplus_13t_b.xml --depth=1
+         repo init -u https://github.com/OnePlusOSS/kernel_manifest.git -b refs/heads/oneplus/sm8750 -m oneplus_ace_6.xml --depth=1
          repo --trace sync -c -j$(nproc --all) --no-tags
          rm kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports!"
          rm kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports!"
@@ -344,43 +339,14 @@ jobs:
         if: steps.check.outputs.should_cancel != 'yes'
         uses: actions/upload-artifact@v4
         with:
-         name: SukiSU_${{ env.KSUVER }}_OnePlus_13T
+         name: SukiSU_${{ env.KSUVER }}_OnePlus_Ace6
          path: ./AnyKernel3/*
 
       - name: Create AnyKernel3 ZIP
         if: steps.check.outputs.should_cancel != 'yes'
         run: |
          cd ./AnyKernel3/
-         zip -r ./OnePlus13T_SukiSU_${{ env.KSUVER }}.zip *
-
-      - name: 添加 KernelSU
-        if: ${{ steps.check.outputs.should_cancel != 'yes' && !inputs.enable_feature_n }}
-        run: |
-          
-          echo "SukiSU..."
-          REPO="SukiSU-Ultra/SukiSU-Ultra"
-          FILENAME="build-manager.yml"
-
-          # 获取最新成功构建的 ID
-          BUILD_ID=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-          "https://api.github.com/repos/$REPO/actions/workflows/$FILENAME/runs?status=success" | \
-          jq -r '.workflow_runs[0].id')
-          echo ＂BUILD_ID=$BUILD_ID＂
-          # 获取该构建的 Artifacts
-          ARTIFACTS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/$REPO/actions/runs/$BUILD_ID/artifacts")
-          echo ＂ARTIFACTS=$ARTIFACTS＂
-          # 获取 Manager 文件的下载链接
-          
-          
-          DOWNLOAD_URL=$(echo "$ARTIFACTS" | jq -r '.artifacts[] | select(.name == "Manager") | .archive_download_url')
-          echo $DOWNLOAD_URL
-
-          # 下载 Manager 文件
-          curl -L -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -o "SukiSU-manager(${{ env.KSUVER }}).zip" "$DOWNLOAD_URL"
-          echo "Manager 文件已下载为：SukiSU-manager(${{ env.KSUVER }}).zip"
-          unzip *.zip
-          mv *.apk SukiSU_${{ env.KSUVER }}.apk
+         zip -r ./OnePlus_Ace6_SukiSU_${{ env.KSUVER }}.zip *
 
       - name: Create Release 
         if: ${{!inputs.enable_feature_z && steps.check.outputs.should_cancel != 'yes'}}
@@ -392,6 +358,5 @@ jobs:
          prerelease: true
          files: |
            ./AnyKernel3/*.zip
-           ./*.apk
         env:
          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
