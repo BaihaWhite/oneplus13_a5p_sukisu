@@ -104,32 +104,78 @@ jobs:
              { print }
          ' kernel/Kbuild > kernel/Kbuild.tmp && mv kernel/Kbuild.tmp kernel/Kbuild
       
+      - name: Check kernel version
+        if: steps.check.outputs.should_cancel != 'yes'
+        id: kernel_version
+        run: |
+          cd kernel_workspace/kernel_platform/common
+          KERNEL_VERSION=$(head -n 1 Makefile | sed 's/VERSION = //')
+          KERNEL_PATCHLEVEL=$(head -n 2 Makefile | tail -n 1 | sed 's/PATCHLEVEL = //')
+          KERNEL_SUBLEVEL=$(head -n 3 Makefile | tail -n 1 | sed 's/SUBLEVEL = //')
+          echo "kernel_version=${KERNEL_VERSION}.${KERNEL_PATCHLEVEL}.${KERNEL_SUBLEVEL}" >> $GITHUB_OUTPUT
+          echo "Detected kernel version: ${KERNEL_VERSION}.${KERNEL_PATCHLEVEL}.${KERNEL_SUBLEVEL}"
+
       - name: Set up susfs
         if: steps.check.outputs.should_cancel != 'yes'
         run: |
            cd kernel_workspace
-           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-android15-6.6
+           
+           # 根据内核版本选择 SUSFS 分支
+           KERNEL_VERSION="${{ steps.kernel_version.outputs.kernel_version }}"
+           echo "Kernel version: $KERNEL_VERSION"
+           
+           # 检查内核版本是否为 6.6 或更高
+           if [[ "$KERNEL_VERSION" == 6.6* ]] || [[ "$KERNEL_VERSION" == 6.7* ]] || [[ "$KERNEL_VERSION" == 6.8* ]] || [[ "$KERNEL_VERSION" == 6.9* ]] || [[ "$KERNEL_VERSION" == 6.1* ]]; then
+             SUSFS_BRANCH="gki-android15-6.6"
+             echo "Using SUSFS branch: $SUSFS_BRANCH"
+           else
+             SUSFS_BRANCH="gki-android14-5.15"
+             echo "Using SUSFS branch: $SUSFS_BRANCH (for older kernel)"
+           fi
+           
+           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b $SUSFS_BRANCH
            git clone https://github.com/SukiSU-Ultra/SukiSU_patch.git
 
            cd kernel_platform        
-           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-android15-6.6.patch ./common/
-           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
-           #lz4k
-           cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
-           cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
-           cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
-           cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/
-           # Apply patches
-           cd ./common
+           
+           # 检查 SUSFS 补丁文件是否存在
+           if [ -f "../susfs4ksu/kernel_patches/50_add_susfs_in_${SUSFS_BRANCH}.patch" ]; then
+             cp ../susfs4ksu/kernel_patches/50_add_susfs_in_${SUSFS_BRANCH}.patch ./common/
+           else
+             echo "SUSFS patch file not found for branch $SUSFS_BRANCH, skipping SUSFS"
+             echo "SUSFS_DISABLED=true" >> $GITHUB_ENV
+           fi
+           
+           if [ "$SUSFS_DISABLED" != "true" ]; then
+             cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
+             cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+             
+             #lz4k
+             cp -r ../SukiSU_patch/other/zram/lz4k/include/linux/* ./common/include/linux
+             cp -r ../SukiSU_patch/other/zram/lz4k/lib/* ./common/lib
+             cp -r ../SukiSU_patch/other/zram/lz4k/crypto/* ./common/crypto
+             cp -r ../SukiSU_patch/other/zram/lz4k_oplus ./common/lib/
+             
+             # Apply patches
+             cd ./common
 
-           sed -i 's/-32,12 +32,38/-32,11 +32,37/g' 50_add_susfs_in_gki-android15-6.6.patch
-           sed -i '/#include <trace\/hooks\/fs.h>/d' 50_add_susfs_in_gki-android15-6.6.patch
+             sed -i 's/-32,12 +32,38/-32,11 +32,37/g' 50_add_susfs_in_${SUSFS_BRANCH}.patch
+             sed -i '/#include <trace\/hooks\/fs.h>/d' 50_add_susfs_in_${SUSFS_BRANCH}.patch
 
-           patch -p1 < 50_add_susfs_in_gki-android15-6.6.patch || true
-           cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
-           patch -p1 -F 3 < syscall_hooks.patch
-           echo "完成"
+             # 尝试应用 SUSFS 补丁，如果失败则跳过
+             if ! patch -p1 < 50_add_susfs_in_${SUSFS_BRANCH}.patch; then
+               echo "SUSFS patch failed, disabling SUSFS features"
+               echo "SUSFS_DISABLED=true" >> $GITHUB_ENV
+             fi
+             
+             if [ "$SUSFS_DISABLED" != "true" ]; then
+               cp ../../SukiSU_patch/hooks/syscall_hooks.patch ./
+               patch -p1 -F 3 < syscall_hooks.patch || echo "syscall_hooks patch failed, continuing..."
+               echo "SUSFS setup completed"
+             fi
+           else
+             echo "SUSFS is disabled due to kernel version incompatibility"
+           fi
       
       - name: Apply HMBird GKI patch
         if: steps.check.outputs.should_cancel != 'yes'
@@ -215,17 +261,60 @@ jobs:
 
  
       - name: Apply lz4kd Patches
-        if: steps.check.outputs.should_cancel != 'yes'
+        if: steps.check.outputs.should_cancel != 'yes' && env.SUSFS_DISABLED != 'true'
         run: |
           cd kernel_workspace/kernel_platform/common
-            cp ../../SukiSU_patch/other/zram/zram_patch/6.6/lz4kd.patch ./
-            patch -p1 -F 3 < lz4kd.patch || true
+          # 检查内核版本，选择合适的 LZ4KD 补丁
+          KERNEL_VERSION="${{ steps.kernel_version.outputs.kernel_version }}"
+          echo "Applying LZ4KD patches for kernel version: $KERNEL_VERSION"
+          
+          # 根据内核版本选择 LZ4KD 补丁
+          if [[ "$KERNEL_VERSION" == 6.6* ]] || [[ "$KERNEL_VERSION" == 6.7* ]] || [[ "$KERNEL_VERSION" == 6.8* ]] || [[ "$KERNEL_VERSION" == 6.9* ]]; then
+            LZ4KD_PATCH="../../SukiSU_patch/other/zram/zram_patch/6.6/lz4kd.patch"
+          elif [[ "$KERNEL_VERSION" == 6.1* ]]; then
+            LZ4KD_PATCH="../../SukiSU_patch/other/zram/zram_patch/6.1/lz4kd.patch"
+          else
+            LZ4KD_PATCH="../../SukiSU_patch/other/zram/zram_patch/5.15/lz4kd.patch"
+          fi
+          
+          # 检查补丁文件是否存在
+          if [ -f "$LZ4KD_PATCH" ]; then
+            cp "$LZ4KD_PATCH" ./
+            if ! patch -p1 -F 3 < lz4kd.patch; then
+              echo "LZ4KD patch failed, but continuing..."
+            else
+              echo "LZ4KD patch applied successfully"
+            fi
+          else
+            echo "LZ4KD patch not found for kernel version $KERNEL_VERSION, skipping..."
+          fi
            
-      - name: Add SUSFS Configuration Settings
+      - name: Add Basic Configuration Settings
         if: steps.check.outputs.should_cancel != 'yes'
         run: |
           cd kernel_workspace/kernel_platform
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_LOCALVERSION_AUTO=n" >> ./common/arch/arm64/configs/gki_defconfig
+
+          # Add BBR
+          echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_NET_SCH_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_CUBIC=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_DEFAULT_TCP_CONG=bbr" >> ./common/arch/arm64/configs/gki_defconfig
+          
+          #Remove check_defconfig
+          sudo sed -i 's/check_defconfig//' ./common/build.config.gki
+          cd common
+          git add -A && git commit -a -m "BUILD Kernel"
+
+      - name: Add SUSFS Configuration Settings
+        if: steps.check.outputs.should_cancel != 'yes' && env.SUSFS_DISABLED != 'true'
+        run: |
+          cd kernel_workspace/kernel_platform
 
           # Add VFS configuration settings
           echo "CONFIG_KSU_SUSFS_SUS_SU=n" >> ./common/arch/arm64/configs/gki_defconfig
@@ -252,17 +341,6 @@ jobs:
           echo "CONFIG_CRYPTO_LZ4K=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_LZ4KD=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_CRYPTO_842=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_LOCALVERSION_AUTO=n" >> ./common/arch/arm64/configs/gki_defconfig
-
-          # Add BBR
-          echo "CONFIG_TCP_CONG_ADVANCED=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_BBR=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_NET_SCH_FQ=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_BIC=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_CUBIC=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_WESTWOOD=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_TCP_CONG_HTCP=n" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_DEFAULT_TCP_CONG=bbr" >> ./common/arch/arm64/configs/gki_defconfig
           
           #Remove check_defconfig
           sudo sed -i 's/check_defconfig//' ./common/build.config.gki
